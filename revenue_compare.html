@@ -1,0 +1,721 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SFDC × SAP 認識収益比較</title>
+  <style>
+    :root{
+      --bg:linear-gradient(135deg,#f4efe6 0%,#efe8db 45%,#e0ecf5 100%);
+      --panel:rgba(255,255,255,.88);
+      --line:rgba(39,58,77,.12);
+      --text:#1f2c38;
+      --muted:#5d6d79;
+      --accent:#0d6e6e;
+      --danger-bg:#ffe5e1;
+      --danger-text:#9d2d1b;
+      --success-bg:#e1f3e8;
+      --success-text:#19613d;
+      --shadow:0 18px 40px rgba(46,67,88,.12);
+    }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:"Segoe UI","Hiragino Sans","Yu Gothic UI",sans-serif;color:var(--text);background:var(--bg);min-height:100vh}
+    .page{max-width:1440px;margin:0 auto;padding:24px 16px 40px}
+    .hero{background:linear-gradient(145deg,rgba(10,84,84,.95),rgba(19,55,102,.9));color:#fff;border-radius:24px;padding:24px;box-shadow:var(--shadow)}
+    .hero h1{margin:0 0 8px;font-size:clamp(1.6rem,2vw + 1rem,2.6rem)}
+    .hero p{margin:0;line-height:1.6;color:rgba(255,255,255,.88)}
+    .layout{display:grid;grid-template-columns:340px 1fr;gap:18px;margin-top:18px}
+    .panel{background:var(--panel);border:1px solid rgba(255,255,255,.6);border-radius:20px;box-shadow:var(--shadow);backdrop-filter:blur(14px)}
+    .controls{padding:20px;position:sticky;top:16px;align-self:start}
+    .content{padding:20px}
+    .section-title{font-size:.9rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:0 0 14px}
+    .field{margin-bottom:14px}
+    label{display:block;font-weight:700;margin-bottom:8px}
+    input[type="file"],input[type="date"],select,button{width:100%;border-radius:14px;font:inherit}
+    input[type="file"],input[type="date"],select{padding:12px 14px;border:1px solid var(--line);background:#fff;color:var(--text)}
+    button{padding:13px 16px;cursor:pointer;border:0;font-weight:700}
+    button:disabled{opacity:.65;cursor:wait}
+    .primary{background:linear-gradient(135deg,var(--accent),#0e7e9c);color:#fff}
+    .secondary{background:#edf4f7;color:var(--text);border:1px solid var(--line);margin-top:10px}
+    .help{margin-top:14px;font-size:.92rem;line-height:1.6;color:var(--muted)}
+    .status{padding:14px 16px;border-radius:16px;margin-top:16px;font-size:.95rem;line-height:1.5;background:rgba(13,110,110,.08);color:var(--accent)}
+    .status.error{background:var(--danger-bg);color:var(--danger-text)}
+    .status.success{background:var(--success-bg);color:var(--success-text)}
+    .summary-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin-bottom:18px}
+    .card{background:rgba(255,255,255,.72);border:1px solid var(--line);border-radius:18px;padding:16px}
+    .card .label{font-size:.85rem;color:var(--muted);margin-bottom:8px}
+    .card .value{font-size:1.45rem;font-weight:800}
+    .meta{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:18px;color:var(--muted);font-size:.94rem}
+    .meta span{background:rgba(255,255,255,.72);border:1px solid var(--line);border-radius:999px;padding:8px 12px}
+    .table-wrap{overflow:auto;border-radius:18px;border:1px solid var(--line);background:rgba(255,255,255,.8)}
+    table{width:100%;border-collapse:collapse;min-width:940px}
+    th,td{padding:12px 14px;border-bottom:1px solid var(--line);text-align:left;vertical-align:middle;white-space:nowrap}
+    th{position:sticky;top:0;background:rgba(239,246,249,.96);z-index:1;font-size:.92rem}
+    td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+    tr.alert-positive{background:rgba(255,132,117,.16)}
+    tr.alert-negative{background:rgba(255,206,145,.18)}
+    .empty{padding:44px 20px;text-align:center;color:var(--muted)}
+    .legend{display:flex;gap:12px;flex-wrap:wrap;margin:12px 0 0;font-size:.9rem;color:var(--muted)}
+    .legend span{display:inline-flex;align-items:center;gap:7px}
+    .swatch{width:14px;height:14px;border-radius:4px;border:1px solid rgba(0,0,0,.08)}
+    @media (max-width:1120px){.layout{grid-template-columns:1fr}.controls{position:static}.summary-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+    @media (max-width:680px){.page{padding:14px 10px 24px}.hero,.controls,.content{padding:16px}.summary-grid{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+  <div class="page">
+    <section class="hero">
+      <h1>SFDC × SAP 認識収益比較</h1>
+      <p>SFDC案件一覧とSAP認識収益ファイルを読み込み、月別の売上・期待計上金額・認識収益・差異をローカルで比較します。</p>
+    </section>
+
+    <div class="layout">
+      <aside class="panel controls">
+        <p class="section-title">入力設定</p>
+
+        <div class="field">
+          <label for="sfdcFile">SFDCファイル</label>
+          <input id="sfdcFile" type="file" accept=".xlsx" />
+        </div>
+
+        <div class="field">
+          <label for="sapFile">SAPファイル</label>
+          <input id="sapFile" type="file" accept=".xlsx" />
+        </div>
+
+        <div class="field">
+          <label for="monthSelect">対象月</label>
+          <select id="monthSelect">
+            <option value="4">4月</option>
+            <option value="5">5月</option>
+            <option value="6">6月</option>
+            <option value="7">7月</option>
+            <option value="8">8月</option>
+            <option value="9">9月</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label for="runDate">実行日</label>
+          <input id="runDate" type="date" />
+        </div>
+
+        <div class="field">
+          <button id="runButton" class="primary">比較表を作成</button>
+          <button id="downloadButton" class="secondary" disabled>CSVを保存</button>
+        </div>
+
+        <div class="help">
+          SFDCは24行目ヘッダ、SAPは23行目ヘッダ前提です。<br>
+          SAPの認識収益は円単位のため <code>/1000</code> してK\換算します。<br>
+          差異率は <code>(認識収益 - 期待計上金額) / 期待計上金額</code> で算出し、<code>±20%</code> 超の行を色付けします。
+        </div>
+
+        <div id="statusBox" class="status">2つのExcelファイルを選んで比較を実行してください。</div>
+      </aside>
+
+      <main class="panel content">
+        <div class="summary-grid">
+          <div class="card"><div class="label">対象件数</div><div id="countValue" class="value">-</div></div>
+          <div class="card"><div class="label">売上金額合計</div><div id="salesValue" class="value">-</div></div>
+          <div class="card"><div class="label">期待計上金額合計</div><div id="expectedValue" class="value">-</div></div>
+          <div class="card"><div class="label">認識収益合計</div><div id="recognizedValue" class="value">-</div></div>
+        </div>
+
+        <div id="metaRow" class="meta"></div>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>案件コード（SFDC）</th>
+                <th>案件名（SFDC）</th>
+                <th class="num">売上金額（SFDC）</th>
+                <th class="num">期待計上金額</th>
+                <th class="num">認識収益（SAP）</th>
+                <th class="num">差異</th>
+                <th class="num">差異率</th>
+              </tr>
+            </thead>
+            <tbody id="resultBody">
+              <tr><td class="empty" colspan="7">ここに比較結果が表示されます。</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="legend">
+          <span><i class="swatch" style="background:rgba(255,132,117,.32)"></i>差異率が +20% 超</span>
+          <span><i class="swatch" style="background:rgba(255,206,145,.34)"></i>差異率が -20% 未満</span>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <script>
+    const els = {
+      sfdcFile: document.getElementById("sfdcFile"),
+      sapFile: document.getElementById("sapFile"),
+      monthSelect: document.getElementById("monthSelect"),
+      runDate: document.getElementById("runDate"),
+      runButton: document.getElementById("runButton"),
+      downloadButton: document.getElementById("downloadButton"),
+      statusBox: document.getElementById("statusBox"),
+      countValue: document.getElementById("countValue"),
+      salesValue: document.getElementById("salesValue"),
+      expectedValue: document.getElementById("expectedValue"),
+      recognizedValue: document.getElementById("recognizedValue"),
+      metaRow: document.getElementById("metaRow"),
+      resultBody: document.getElementById("resultBody")
+    };
+
+    const state = { rows: [], csvText: "" };
+
+    init();
+
+    function init() {
+      const today = new Date();
+      els.runDate.value = formatDateInput(today);
+      const month = today.getMonth() + 1;
+      if (month >= 4 && month <= 9) els.monthSelect.value = String(month);
+      els.runButton.addEventListener("click", handleRun);
+      els.downloadButton.addEventListener("click", downloadCsv);
+    }
+
+    async function handleRun() {
+      const sfdcFile = els.sfdcFile.files[0];
+      const sapFile = els.sapFile.files[0];
+      const selectedMonth = Number(els.monthSelect.value);
+      const runDate = parseDateInput(els.runDate.value);
+
+      if (!sfdcFile || !sapFile) return setStatus("SFDCファイルとSAPファイルの両方を選択してください。", "error");
+      if (!runDate) return setStatus("実行日を指定してください。", "error");
+
+      toggleBusy(true);
+      setStatus("Excelファイルを読み込み中です。", "");
+
+      try {
+        const [sfdcWorkbook, sapWorkbook] = await Promise.all([readWorkbook(sfdcFile), readWorkbook(sapFile)]);
+        const sfdcData = parseSfdcSheet(sfdcWorkbook.sheets[0]);
+        const sapMap = parseSapSheet(sapWorkbook.sheets[0]);
+        const year = sfdcData.fiscalYear || runDate.getFullYear();
+        const progress = getMonthBusinessProgress(year, selectedMonth, runDate);
+        const rows = buildMergedRows(sfdcData.records, sapMap, selectedMonth, progress.ratio);
+
+        state.rows = rows;
+        state.csvText = buildCsv(rows);
+
+        renderSummary(rows);
+        renderMeta({ year, month: selectedMonth, runDate, progress });
+        renderTable(rows);
+        els.downloadButton.disabled = rows.length === 0;
+        setStatus(`比較表を作成しました。対象 ${rows.length} 件 / 営業日進捗 ${formatPercent(progress.ratio)} (${progress.elapsedDays}/${progress.totalDays}日)。`, "success");
+      } catch (err) {
+        console.error(err);
+        renderTable([]);
+        renderSummary([]);
+        renderMeta(null);
+        els.downloadButton.disabled = true;
+        setStatus(err.message || "処理に失敗しました。", "error");
+      } finally {
+        toggleBusy(false);
+      }
+    }
+
+    function toggleBusy(flag) {
+      els.runButton.disabled = flag;
+      els.runButton.textContent = flag ? "処理中..." : "比較表を作成";
+    }
+
+    function setStatus(message, type) {
+      els.statusBox.textContent = message;
+      els.statusBox.className = `status${type ? " " + type : ""}`;
+    }
+
+    function renderSummary(rows) {
+      const t = rows.reduce((a, r) => {
+        a.sales += r.sales;
+        a.expected += r.expected;
+        a.recognized += r.recognized;
+        return a;
+      }, { sales: 0, expected: 0, recognized: 0 });
+
+      els.countValue.textContent = rows.length ? String(rows.length) : "-";
+      els.salesValue.textContent = rows.length ? formatCurrency(t.sales) : "-";
+      els.expectedValue.textContent = rows.length ? formatCurrency(t.expected) : "-";
+      els.recognizedValue.textContent = rows.length ? formatCurrency(t.recognized) : "-";
+    }
+
+    function renderMeta(info) {
+      if (!info) { els.metaRow.innerHTML = ""; return; }
+      els.metaRow.innerHTML = [
+        `対象年月: ${info.year}年${info.month}月`,
+        `実行日: ${formatDateJp(info.runDate)}`,
+        `営業日進捗: ${info.progress.elapsedDays}/${info.progress.totalDays}日 (${formatPercent(info.progress.ratio)})`,
+        `判定基準: 差異率 ±20%`
+      ].map(v => `<span>${escapeHtml(v)}</span>`).join("");
+    }
+
+    function renderTable(rows) {
+      if (!rows.length) {
+        els.resultBody.innerHTML = `<tr><td class="empty" colspan="7">条件に合うデータがありません。</td></tr>`;
+        return;
+      }
+      els.resultBody.innerHTML = rows.map(row => {
+        const rateText = row.diffRate === null ? "-" : formatPercent(row.diffRate);
+        let cls = "";
+        if (row.diffRate !== null && row.diffRate > 0.2) cls = "alert-positive";
+        else if (row.diffRate !== null && row.diffRate < -0.2) cls = "alert-negative";
+        return `
+          <tr class="${cls}">
+            <td>${escapeHtml(row.code)}</td>
+            <td>${escapeHtml(row.name)}</td>
+            <td class="num">${formatCurrency(row.sales)}</td>
+            <td class="num">${formatCurrency(row.expected)}</td>
+            <td class="num">${formatCurrency(row.recognized)}</td>
+            <td class="num">${formatCurrency(row.diff)}</td>
+            <td class="num">${rateText}</td>
+          </tr>
+        `;
+      }).join("");
+    }
+
+    function buildMergedRows(sfdcRecords, sapMap, selectedMonth, progressRatio) {
+      return sfdcRecords
+        .map(record => {
+          const sales = Math.round(record.monthSales[selectedMonth] || 0);
+          if (!sales) return null;
+
+          const recognized = Math.round(sapMap.get(record.normalizedCode) || 0);
+          const expected = Math.round(sales * progressRatio);
+          const diff = recognized - expected;
+          const diffRate = expected === 0 ? null : diff / expected;
+
+          return {
+            code: record.code,
+            normalizedCode: record.normalizedCode,
+            name: record.name,
+            sales,
+            expected,
+            recognized,
+            diff,
+            diffRate
+          };
+        })
+        .filter(Boolean)
+        .sort((a, b) => Math.abs(b.diff) - Math.abs(a.diff));
+    }
+
+    function buildCsv(rows) {
+      const header = ["案件コード（SFDC）","案件名（SFDC）","売上金額（SFDC）","期待計上金額","認識収益（SAP）","差異","差異率"];
+      const lines = rows.map(r => [r.code, r.name, r.sales, r.expected, r.recognized, r.diff, r.diffRate === null ? "" : r.diffRate]);
+      return [header, ...lines].map(line => line.map(csvEscape).join(",")).join("\r\n");
+    }
+
+    function downloadCsv() {
+      if (!state.csvText) return;
+      const blob = new Blob(["\uFEFF" + state.csvText], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `SFDC_SAP_比較_${els.monthSelect.value}月.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    function parseSfdcSheet(sheetRows) {
+      const monthHeaderRow = sheetRows[22] || [];
+      const headerRow = sheetRows[23] || [];
+      const dataRows = sheetRows.slice(24);
+
+      const nameCol = findColumnIndex(headerRow, "案件名");
+      const codeCol = findColumnIndex(headerRow, "案件コード");
+      if (nameCol < 0 || codeCol < 0) throw new Error("SFDCファイルで「案件名」または「案件コード」列を見つけられませんでした。");
+
+      const monthColumns = {};
+      headerRow.forEach((cell, index) => {
+        const monthValue = extractMonthValue(monthHeaderRow[index]);
+        if (monthValue && String(cell).includes("売上高")) monthColumns[monthValue] = index;
+      });
+
+      const requiredMonths = [4, 5, 6, 7, 8, 9];
+      const missing = requiredMonths.filter(m => monthColumns[m] === undefined);
+      if (missing.length) throw new Error(`SFDCファイルで売上高列を見つけられない月があります: ${missing.join(", ")}月`);
+
+      const aggregated = new Map();
+      for (const row of dataRows) {
+        const code = cleanString(row[codeCol]);
+        const name = cleanString(row[nameCol]);
+        if (!code || !name) continue;
+
+        const normalizedCode = normalizeProjectCode(code);
+        const rec = aggregated.get(normalizedCode) || {
+          code, normalizedCode, name,
+          monthSales: { 4:0, 5:0, 6:0, 7:0, 8:0, 9:0 }
+        };
+
+        [4,5,6,7,8,9].forEach(month => {
+          rec.monthSales[month] += toNumber(row[monthColumns[month]]);
+        });
+
+        aggregated.set(normalizedCode, rec);
+      }
+
+      return { fiscalYear: detectFiscalYear(sheetRows), records: [...aggregated.values()] };
+    }
+
+    function parseSapSheet(sheetRows) {
+      const headerRow = sheetRows[22] || [];
+      const dataRows = sheetRows.slice(23);
+      const projectCol = findColumnIndex(headerRow, "プロジェクト");
+      const recognizedCol = findColumnIndex(headerRow, "認識収益");
+      if (projectCol < 0 || recognizedCol < 0) throw new Error("SAPファイルで「プロジェクト」または「認識収益」列を見つけられませんでした。");
+
+      const map = new Map();
+      for (const row of dataRows) {
+        const project = normalizeProjectCode(row[projectCol]);
+        if (!project) continue;
+
+        const recognizedK = toNumber(row[recognizedCol]) / 1000;
+        map.set(project, (map.get(project) || 0) + recognizedK);
+      }
+      return map;
+    }
+
+    function detectFiscalYear(rows) {
+      for (let r = 0; r < Math.min(rows.length, 22); r++) {
+        for (const cell of (rows[r] || [])) {
+          const v = cleanString(cell);
+          if (/^20\d{2}$/.test(v)) return Number(v);
+        }
+      }
+      return null;
+    }
+
+    function extractMonthValue(value) {
+      const text = cleanString(value);
+      const m = text.match(/\d+/);
+      return m ? Number(m[0]) : null;
+    }
+
+    function findColumnIndex(row, label) {
+      return row.findIndex(cell => cleanString(cell).includes(label));
+    }
+
+    function normalizeProjectCode(value) {
+      return cleanString(value).replace(/-/g, "").replace(/\s+/g, "");
+    }
+
+    function cleanString(value) {
+      return value === null || value === undefined ? "" : String(value).trim();
+    }
+
+    function toNumber(value) {
+      if (value === null || value === undefined || value === "") return 0;
+      if (typeof value === "number") return value;
+      const num = Number(String(value).replace(/,/g, "").trim());
+      return Number.isFinite(num) ? num : 0;
+    }
+
+    function formatCurrency(value) {
+      return `${new Intl.NumberFormat("ja-JP", {
+        maximumFractionDigits: 0
+      }).format(Math.round(value))}`;
+    }
+
+    function formatPercent(value) {
+      return `${(value * 100).toFixed(1)}%`;
+    }
+
+    function formatDateInput(date) {
+      const y = date.getFullYear();
+      const m = String(date.getMonth() + 1).padStart(2, "0");
+      const d = String(date.getDate()).padStart(2, "0");
+      return `${y}-${m}-${d}`;
+    }
+
+    function parseDateInput(value) {
+      if (!value) return null;
+      const [y, m, d] = value.split("-").map(Number);
+      const date = new Date(y, m - 1, d);
+      return Number.isNaN(date.getTime()) ? null : date;
+    }
+
+    function formatDateJp(date) {
+      return `${date.getFullYear()}/${String(date.getMonth() + 1).padStart(2, "0")}/${String(date.getDate()).padStart(2, "0")}`;
+    }
+
+    function getMonthBusinessProgress(year, month, runDate) {
+      const monthStart = new Date(year, month - 1, 1);
+      const monthEnd = new Date(year, month, 0);
+      const totalDays = countBusinessDays(monthStart, monthEnd);
+      let elapsedDays = 0;
+      if (runDate < monthStart) elapsedDays = 0;
+      else if (runDate > monthEnd) elapsedDays = totalDays;
+      else elapsedDays = countBusinessDays(monthStart, runDate);
+      return { elapsedDays, totalDays, ratio: totalDays === 0 ? 0 : elapsedDays / totalDays };
+    }
+
+    function countBusinessDays(startDate, endDate) {
+      let count = 0;
+      const holidays = getJapaneseHolidaySet(startDate.getFullYear(), endDate.getFullYear());
+      const current = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate());
+      while (current <= endDate) {
+        if (isBusinessDay(current, holidays)) count++;
+        current.setDate(current.getDate() + 1);
+      }
+      return count;
+    }
+
+    function isBusinessDay(date, holidays) {
+      const day = date.getDay();
+      if (day === 0 || day === 6) return false;
+      return !holidays.has(formatDateInput(date));
+    }
+
+    function getJapaneseHolidaySet(startYear, endYear) {
+      const set = new Set();
+      for (let year = startYear; year <= endYear; year++) {
+        buildJapaneseHolidays(year).forEach(date => set.add(formatDateInput(date)));
+      }
+      return set;
+    }
+
+    function buildJapaneseHolidays(year) {
+      const holidays = [
+        new Date(year,0,1),
+        nthWeekdayOfMonth(year,0,1,2),
+        new Date(year,1,11),
+        new Date(year,1,23),
+        new Date(year,2,getVernalEquinoxDay(year)),
+        new Date(year,3,29),
+        new Date(year,4,3),
+        new Date(year,4,4),
+        new Date(year,4,5),
+        nthWeekdayOfMonth(year,6,1,3),
+        new Date(year,7,11),
+        nthWeekdayOfMonth(year,8,1,3),
+        new Date(year,8,getAutumnEquinoxDay(year)),
+        nthWeekdayOfMonth(year,9,1,2),
+        new Date(year,10,3),
+        new Date(year,10,23)
+      ];
+
+      const map = new Map(holidays.map(d => [formatDateInput(d), new Date(d)]));
+      const base = [...map.values()].sort((a,b)=>a-b);
+
+      for (const holiday of base) {
+        if (holiday.getDay() === 0) {
+          const sub = new Date(holiday);
+          do sub.setDate(sub.getDate() + 1);
+          while (map.has(formatDateInput(sub)));
+          map.set(formatDateInput(sub), sub);
+        }
+      }
+
+      const sorted = [...map.values()].sort((a,b)=>a-b);
+      for (let i = 0; i < sorted.length - 1; i++) {
+        const current = sorted[i];
+        const next = sorted[i + 1];
+        const between = new Date(current);
+        between.setDate(between.getDate() + 1);
+        if (next.getTime() - current.getTime() === 2 * 86400000 && between.getDay() !== 0 && between.getDay() !== 6) {
+          map.set(formatDateInput(between), between);
+        }
+      }
+
+      return [...map.values()];
+    }
+
+    function nthWeekdayOfMonth(year, month, weekday, nth) {
+      const first = new Date(year, month, 1);
+      const diff = (7 + weekday - first.getDay()) % 7;
+      return new Date(year, month, 1 + diff + (nth - 1) * 7);
+    }
+
+    function getVernalEquinoxDay(year) {
+      return Math.floor(20.8431 + 0.242194 * (year - 1980) - Math.floor((year - 1980) / 4));
+    }
+
+    function getAutumnEquinoxDay(year) {
+      return Math.floor(23.2488 + 0.242194 * (year - 1980) - Math.floor((year - 1980) / 4));
+    }
+
+    function csvEscape(value) {
+      const text = String(value ?? "");
+      return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, "\"\"")}"` : text;
+    }
+
+    function escapeHtml(value) {
+      return String(value)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+    }
+
+    async function readWorkbook(file) {
+      const zip = await ZipArchive.fromArrayBuffer(await file.arrayBuffer());
+      const sharedStrings = await readSharedStrings(zip);
+      const workbookInfo = await readWorkbookInfo(zip);
+      const sheets = [];
+
+      for (const def of workbookInfo.sheets) {
+        const xmlText = await zip.readText(def.path);
+        sheets.push(parseSheetRows(xmlText, sharedStrings));
+      }
+
+      return { sheets };
+    }
+
+    async function readSharedStrings(zip) {
+      if (!zip.has("xl/sharedStrings.xml")) return [];
+      const xmlText = await zip.readText("xl/sharedStrings.xml");
+      const doc = new DOMParser().parseFromString(xmlText, "application/xml");
+      return [...doc.getElementsByTagNameNS("*", "si")].map(node =>
+        [...node.getElementsByTagNameNS("*", "t")].map(n => n.textContent || "").join("")
+      );
+    }
+
+    async function readWorkbookInfo(zip) {
+      const workbookXml = await zip.readText("xl/workbook.xml");
+      const relsXml = await zip.readText("xl/_rels/workbook.xml.rels");
+      const workbookDoc = new DOMParser().parseFromString(workbookXml, "application/xml");
+      const relsDoc = new DOMParser().parseFromString(relsXml, "application/xml");
+      const relMap = new Map();
+
+      [...relsDoc.getElementsByTagName("Relationship")].forEach(rel => {
+        relMap.set(rel.getAttribute("Id"), rel.getAttribute("Target"));
+      });
+
+      const sheets = [...workbookDoc.getElementsByTagNameNS("*", "sheet")].map(sheet => {
+        const relId = sheet.getAttributeNS("http://schemas.openxmlformats.org/officeDocument/2006/relationships", "id");
+        return { name: sheet.getAttribute("name"), path: normalizeWorkbookPath(relMap.get(relId)) };
+      });
+
+      return { sheets };
+    }
+
+    function normalizeWorkbookPath(target) {
+      if (!target) throw new Error("シートパスを取得できませんでした。");
+      if (target.startsWith("/")) return target.slice(1);
+      if (target.startsWith("xl/")) return target;
+      return `xl/${target.replace(/^\.\//, "")}`;
+    }
+
+    function parseSheetRows(xmlText, sharedStrings) {
+      const doc = new DOMParser().parseFromString(xmlText, "application/xml");
+      const rowNodes = [...doc.getElementsByTagNameNS("*", "row")];
+      const rows = [];
+
+      for (const rowNode of rowNodes) {
+        const rowNumber = Number(rowNode.getAttribute("r"));
+        const row = [];
+        const cells = [...rowNode.getElementsByTagNameNS("*", "c")];
+        for (const cell of cells) {
+          const ref = cell.getAttribute("r") || "";
+          const match = ref.match(/^([A-Z]+)(\d+)$/);
+          if (!match) continue;
+          const colIndex = columnLettersToIndex(match[1]);
+          row[colIndex] = readCellValue(cell, sharedStrings);
+        }
+        rows[rowNumber - 1] = row;
+      }
+      return rows;
+    }
+
+    function readCellValue(cell, sharedStrings) {
+      const type = cell.getAttribute("t");
+      if (type === "inlineStr") {
+        return [...cell.getElementsByTagNameNS("*", "t")].map(n => n.textContent || "").join("");
+      }
+      const valueNode = cell.getElementsByTagNameNS("*", "v")[0];
+      if (!valueNode) return "";
+      const raw = valueNode.textContent || "";
+      if (type === "s") return sharedStrings[Number(raw)] || "";
+      if (type === "b") return raw === "1";
+      if (type === "str") return raw;
+      const num = Number(raw);
+      return Number.isFinite(num) ? num : raw;
+    }
+
+    function columnLettersToIndex(letters) {
+      let index = 0;
+      for (const ch of letters) index = index * 26 + (ch.charCodeAt(0) - 64);
+      return index - 1;
+    }
+
+    class ZipArchive {
+      constructor(buffer, entries) {
+        this.buffer = buffer;
+        this.entries = entries;
+        this.decoder = new TextDecoder("utf-8");
+      }
+
+      static async fromArrayBuffer(buffer) {
+        return new ZipArchive(buffer, parseZipEntries(buffer));
+      }
+
+      has(path) { return this.entries.has(path); }
+
+      async readText(path) {
+        return this.decoder.decode(await this.readBytes(path));
+      }
+
+      async readBytes(path) {
+        const entry = this.entries.get(path);
+        if (!entry) throw new Error(`ZIP内に ${path} が見つかりませんでした。`);
+        const view = new DataView(this.buffer);
+        const localOffset = entry.localHeaderOffset;
+        if (view.getUint32(localOffset, true) !== 0x04034b50) throw new Error(`ZIPヘッダを読めませんでした: ${path}`);
+
+        const fileNameLength = view.getUint16(localOffset + 26, true);
+        const extraFieldLength = view.getUint16(localOffset + 28, true);
+        const dataStart = localOffset + 30 + fileNameLength + extraFieldLength;
+        const compressed = this.buffer.slice(dataStart, dataStart + entry.compressedSize);
+
+        if (entry.compressionMethod === 0) return new Uint8Array(compressed);
+        if (entry.compressionMethod === 8) {
+          const stream = new Blob([compressed]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
+          const response = new Response(stream);
+          return new Uint8Array(await response.arrayBuffer());
+        }
+        throw new Error(`未対応の圧縮形式です: ${path}`);
+      }
+    }
+
+    function parseZipEntries(buffer) {
+      const view = new DataView(buffer);
+      const eocdOffset = findEndOfCentralDirectory(view);
+      const totalEntries = view.getUint16(eocdOffset + 10, true);
+      const centralDirectoryOffset = view.getUint32(eocdOffset + 16, true);
+      const entries = new Map();
+      let offset = centralDirectoryOffset;
+
+      for (let i = 0; i < totalEntries; i++) {
+        if (view.getUint32(offset, true) !== 0x02014b50) throw new Error("ZIPの解析に失敗しました。");
+
+        const compressionMethod = view.getUint16(offset + 10, true);
+        const compressedSize = view.getUint32(offset + 20, true);
+        const fileNameLength = view.getUint16(offset + 28, true);
+        const extraFieldLength = view.getUint16(offset + 30, true);
+        const fileCommentLength = view.getUint16(offset + 32, true);
+        const localHeaderOffset = view.getUint32(offset + 42, true);
+        const path = new TextDecoder("utf-8").decode(new Uint8Array(buffer, offset + 46, fileNameLength));
+
+        entries.set(path, { compressionMethod, compressedSize, localHeaderOffset });
+        offset += 46 + fileNameLength + extraFieldLength + fileCommentLength;
+      }
+      return entries;
+    }
+
+    function findEndOfCentralDirectory(view) {
+      const min = Math.max(0, view.byteLength - 22 - 65535);
+      for (let offset = view.byteLength - 22; offset >= min; offset--) {
+        if (view.getUint32(offset, true) === 0x06054b50) return offset;
+      }
+      throw new Error("xlsxファイルのZIP終端を見つけられませんでした。");
+    }
+  </script>
+</body>
+</html>
